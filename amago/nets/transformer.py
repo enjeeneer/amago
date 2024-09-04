@@ -320,7 +320,7 @@ class Transformer(nn.Module):
         dropout_ff: float = 0.05,
         dropout_attn: float = 0.00,
         dropout_qkv: float = 0.00,
-        attention: str = "flash",
+        attention: str = "vanilla",
         activation: str = "leaky_relu",
         norm: str = "layer",
         causal: bool = True,
