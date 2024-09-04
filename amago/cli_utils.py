@@ -42,6 +42,7 @@ def add_common_cli(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument(
         "--run_name",
         type=str,
+        default="default",
         required=True,
         help="Give the run a name. Used for logging and the disk replay buffer. Experiments with the same run_name share the same replay buffer, but log separately.",
     )
@@ -49,6 +50,7 @@ def add_common_cli(parser: ArgumentParser) -> ArgumentParser:
     parser.add_argument(
         "--buffer_dir",
         type=str,
+        default="~/amago_buffers",
         required=True,
         help="Path to disk location where replay buffer (and checkpoints) will be stored. Should probably be somewhere with lots of space...",
     )

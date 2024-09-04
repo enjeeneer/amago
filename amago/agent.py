@@ -1,3 +1,5 @@
+# pylint: skip-file
+# fmt: off
 from itertools import chain
 
 import torch
@@ -8,12 +10,15 @@ import numpy as np
 import wandb
 import gin
 import gymnasium as gym
+from typing import Union
 
-from amago.loading import Batch, MAGIC_PAD_VAL
-from amago.nets.tstep_encoders import *
-from amago.nets.traj_encoders import *
-from amago.nets import actor_critic
-from amago import utils
+from agents.amago.amago.loading import Batch, MAGIC_PAD_VAL
+from agents.amago.amago.nets.tstep_encoders import *
+from agents.amago.amago.nets.traj_encoders import *
+from agents.amago.amago.nets import actor_critic
+from agents.amago.amago import utils
+from agents.amago.amago.envs.env_utils import GPUSequenceBuffer
+from agents.base import AmagoBatch
 
 
 @gin.configurable
@@ -36,9 +41,16 @@ class Agent(nn.Module):
         obs_space: gym.spaces.Dict,
         goal_space: gym.spaces.Box,
         rl2_space: gym.spaces.Box,
-        action_space: gym.spaces.Space,
         max_seq_len: int,
         horizon: int,
+        device: torch.device,
+        batch_size: int = 24,
+        learning_rate: float = 1e-4,
+        l2_coeff: float = 1e-3,
+        critic_loss_weight: float = 10.0,
+        lr_warmup_steps: int = 500,
+        action_space: Optional[gym.spaces.Space] = None,
+        action_dim: int = None,
         tstep_encoder_Cls=FFTstepEncoder,
         traj_encoder_Cls=TformerTrajEncoder,
         num_critics: int = 4,
@@ -54,6 +66,7 @@ class Agent(nn.Module):
         use_multigamma: bool = True,
     ):
         super().__init__()
+        self.name = "Amago"
         self.obs_space = obs_space
         self.goal_space = goal_space
         self.rl2_space = rl2_space
@@ -61,16 +74,21 @@ class Agent(nn.Module):
         self.action_space = action_space
         self.multibinary = False
         self.discrete = False
-        if isinstance(self.action_space, gym.spaces.Discrete):
-            self.action_dim = self.action_space.n
-            self.discrete = True
-        elif isinstance(self.action_space, gym.spaces.MultiBinary):
-            self.action_dim = self.action_space.n
-            self.multibinary = True
-        elif isinstance(self.action_space, gym.spaces.Box):
-            self.action_dim = self.action_space.shape[-1]
+        if action_dim is None:
+            if isinstance(self.action_space, gym.spaces.Discrete):
+                self.action_dim = self.action_space.n
+                self.discrete = True
+            elif isinstance(self.action_space, gym.spaces.MultiBinary):
+                self.action_dim = self.action_space.n
+                self.multibinary = True
+            elif isinstance(action_space, gym.spaces.Box):
+                self.action_dim = self.action_space.shape[-1]
+            elif isinstance(action_space, gym.spaces.box.Box):
+                self.action_dim = self.action_space.shape[-1]
+            else:
+                raise ValueError(f"Unsupported action space: `{type(self.action_space)}`")
         else:
-            raise ValueError(f"Unsupported action space: `{type(self.action_space)}`")
+            self.action_dim = action_dim
 
         self.reward_multiplier = reward_multiplier
         self.pad_val = MAGIC_PAD_VAL
@@ -78,8 +96,11 @@ class Agent(nn.Module):
         self.offline_coeff = offline_coeff
         self.online_coeff = online_coeff
         self.tau = tau
+        self.device = device
         self.use_target_actor = use_target_actor
         self.max_seq_len = max_seq_len
+        self.batch_size = batch_size
+        self._critic_loss_weight = critic_loss_weight
 
         self.tstep_encoder = tstep_encoder_Cls(
             obs_space=obs_space,
@@ -127,6 +148,71 @@ class Agent(nn.Module):
         self.target_actor = actor_critic.Actor(**ac_kwargs)
         # full weight copy to targets
         self.hard_sync_targets()
+
+        # optimizer
+        self.optimizer = torch.optim.AdamW(
+            self.trainable_params,
+            lr=learning_rate,
+            weight_decay=l2_coeff,
+        )
+        self.lr_schedule = utils.get_constant_schedule_with_warmup(
+            optimizer=self.optimizer, num_warmup_steps=lr_warmup_steps
+        )
+
+    def update(self, batch: AmagoBatch, **kwargs) -> dict:
+        """
+        Core update step. Mimics the "train_step" fucntionality from
+        the original repo:
+        https://github.com/UT-Austin-RPL/amago/
+        blob/5245bf436ab4e0159004ca5dfb7197edc0148bcd/amago/learning.py#L588-L603
+        Args:
+            batch: AmagoBatch of trajectories
+
+        :return:
+        """
+
+        self.optimizer.zero_grad()
+        loss_dict = self._compute_loss(batch)
+        loss = loss_dict["actor_loss"] + self._critic_loss_weight * loss_dict["critic_loss"]
+        loss.backward()
+        self.optimizer.step()
+        self.lr_schedule.step()
+
+        return loss_dict
+
+    def _compute_loss(self, batch: AmagoBatch):
+        """
+        Compute the Amago loss. Mimics the "compute_loss" function from
+        the original repo:
+        https://github.com/UT-Austin-RPL/amago/blob/
+        5245bf436ab4e0159004ca5dfb7197edc0148bcd/amago/learning.py#L554-L574
+        Args:
+            batch: AmagoBatch of trajectories
+        Returns:
+            dict: loss dictionary
+        """
+        critic_loss, actor_loss = self.forward(batch, True)
+
+        update_info = self.update_info
+        B, L_1, G, _ = actor_loss.shape
+        C = len(self.critics)
+        state_mask = (~((batch.rl2s == MAGIC_PAD_VAL).all(-1, keepdim=True))).float()
+        critic_state_mask = repeat(state_mask[:, 1:, ...], f"B L 1 -> B L {C} {G} 1")
+        actor_state_mask = repeat(state_mask[:, :-1, ...], f"B L 1 -> B L {G} 1")
+
+        masked_actor_loss = utils.masked_avg(actor_loss, actor_state_mask)
+        if isinstance(critic_loss, torch.Tensor):
+            masked_critic_loss = utils.masked_avg(critic_loss, critic_state_mask)
+        else:
+            assert critic_loss is None
+            masked_critic_loss = 0.0
+
+        return {
+            "critic_loss": masked_critic_loss,
+            "actor_loss": masked_actor_loss,
+            "mask": state_mask,
+        } | update_info
+
 
     def get_current_timestep(
         self, sequences: torch.Tensor | dict[torch.Tensor], seq_lengths: torch.Tensor
@@ -228,7 +314,7 @@ class Agent(nn.Module):
             actions = actions.astype(np.float32)
         return actions, hidden_state
 
-    def forward(self, batch: Batch, log_step: bool):
+    def forward(self, batch: Union[Batch, AmagoBatch], log_step: bool):
         """
         Main step of training loop. Generate actor and critic loss
         terms in a minimum number of forward passes with a compact
@@ -505,6 +591,47 @@ class Agent(nn.Module):
             "PopArt b (mean over gamma)": self.popart.b.data.mean().item(),
             "PopArt sigma (mean over gamma)": self.popart.sigma.mean().item(),
         }
+
+    def add_data_to_sequence_buffer(
+            self,
+            obs: np.ndarray,
+            time_step: int,
+            done: bool,
+            obs_sequence: GPUSequenceBuffer,
+            goal_sequence: GPUSequenceBuffer,
+            rl2_sequence: GPUSequenceBuffer,
+            action: np.ndarray = None,
+            reward: float = None
+    ):
+        # the expand dims shaping below is to align with the
+        # (num_workers, 1, ...) shape of the sequence buffers
+
+        # for some reason Amago wants the obs stored as a dict
+        _obs = {
+            "observation": np.expand_dims(obs, axis=(0, 1))
+        }
+        _done = np.expand_dims(done, axis=(0, 1))
+        _goal = np.expand_dims(np.array([0.], dtype=np.float32), axis=(0, 1, 2))
+        _time = np.expand_dims(np.array([time_step], dtype=np.float32), axis=(0, 1))
+
+        # first timestep requires some dummy variables
+        if time_step == 0:
+            _action = np.expand_dims(np.array([-2] * self.action_dim, dtype=np.float32), axis=(0, 1))  # -2 for dummy action, 0
+            _reset = np.expand_dims(np.array([1.], dtype=np.float32), axis=(0, 1))
+            _reward = np.expand_dims(np.array([0.], dtype=np.float32), axis=(0, 1))
+        else:
+            _action = np.expand_dims(action, axis=(0))
+            _reset = np.expand_dims(np.array([0.], dtype=np.float32), axis=(0, 1))
+            _reward = np.expand_dims([reward], axis=(0, 1))
+
+        _rl2 = np.concatenate((_reset, _reward, _time, _action), axis=-1, dtype=np.float32)
+
+        # add to sequence buffers
+        obs_sequence.add_timestep(_obs, _done)
+        goal_sequence.add_timestep(_goal, _done)
+        rl2_sequence.add_timestep(_rl2, _done)
+
+        return obs_sequence, goal_sequence, rl2_sequence
 
 
 @gin.configurable
