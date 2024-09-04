@@ -44,6 +44,7 @@ class FFTstepEncoder(TstepEncoder):
         obs_space,
         goal_space,
         rl2_space,
+        device,
         n_layers: int = 2,
         d_hidden: int = 512,
         d_output: int = 256,
@@ -59,15 +60,15 @@ class FFTstepEncoder(TstepEncoder):
         in_dim = flat_obs_shape + self.goal_emb_dim + self.rl2_space.shape[-1]
         self.in_norm = InputNorm(
             flat_obs_shape + self.rl2_space.shape[-1], skip=not normalize_inputs
-        )
+        ).to(device)
         self.base = ff.MLP(
             d_inp=in_dim,
             d_hidden=d_hidden,
             n_layers=n_layers,
             d_output=d_output,
             activation=activation,
-        )
-        self.out_norm = ff.Normalization(norm, d_output)
+        ).to(device)
+        self.out_norm = ff.Normalization(norm, d_output).to(device)
         self._emb_dim = d_output
         self.hide_rl2s = hide_rl2s
 

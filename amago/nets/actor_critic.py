@@ -489,16 +489,17 @@ class PopArtLayer(nn.Module):
     def __init__(
         self,
         gammas: int,
+        device: torch.device,
         beta: float = 5e-4,
         init_nu: float = 100.0,
         enabled: bool = True,
     ):
         super().__init__()
-        self.register_buffer("mu", torch.zeros(gammas, 1))
-        self.register_buffer("nu", torch.ones(gammas, 1) * init_nu)
-        self.register_buffer("w", torch.ones((gammas, 1)))
-        self.register_buffer("b", torch.zeros((gammas, 1)))
-        self.register_buffer("_t", torch.ones((gammas, 1)))
+        self.register_buffer("mu", torch.zeros(gammas, 1, device=device))
+        self.register_buffer("nu", torch.ones(gammas, 1, device=device) * init_nu)
+        self.register_buffer("w", torch.ones((gammas, 1), device=device))
+        self.register_buffer("b", torch.zeros((gammas, 1), device=device))
+        self.register_buffer("_t", torch.ones((gammas, 1), device=device))
         self.beta = beta
         self.enabled = enabled
 

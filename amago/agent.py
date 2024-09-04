@@ -107,11 +107,13 @@ class Agent(nn.Module):
             obs_space=obs_space,
             goal_space=goal_space,
             rl2_space=rl2_space,
+            device=device,
         )
         self.traj_encoder = traj_encoder_Cls(
             tstep_dim=self.tstep_encoder.emb_dim,
             max_seq_len=max_seq_len,
             horizon=horizon,
+            device=device,
         )
         self.emb_dim = self.traj_encoder.emb_dim
 
@@ -128,7 +130,7 @@ class Agent(nn.Module):
         self.num_critics = num_critics
         self.num_critics_td = num_critics_td
 
-        self.popart = actor_critic.PopArtLayer(gammas=len(gammas), enabled=popart)
+        self.popart = actor_critic.PopArtLayer(gammas=len(gammas), enabled=popart, device=device).to(device)
 
         ac_kwargs = {
             "state_dim": self.traj_encoder.emb_dim,
@@ -136,17 +138,17 @@ class Agent(nn.Module):
             "discrete": self.discrete,
             "gammas": self.gammas,
         }
-        self.critics = actor_critic.NCritics(**ac_kwargs, num_critics=num_critics)
+        self.critics = actor_critic.NCritics(**ac_kwargs, num_critics=num_critics).to(device)
         self.target_critics = actor_critic.NCritics(
             **ac_kwargs, num_critics=num_critics
-        )
+        ).to(device)
         self.maximized_critics = actor_critic.NCritics(
             **ac_kwargs, num_critics=num_critics
-        )
+        ).to(device)
         if self.multibinary:
             ac_kwargs["cont_dist_kind"] = "multibinary"
-        self.actor = actor_critic.Actor(**ac_kwargs)
-        self.target_actor = actor_critic.Actor(**ac_kwargs)
+        self.actor = actor_critic.Actor(**ac_kwargs).to(device)
+        self.target_actor = actor_critic.Actor(**ac_kwargs).to(device)
         # full weight copy to targets
         self.hard_sync_targets()
 
@@ -609,7 +611,7 @@ class Agent(nn.Module):
 
         # for some reason Amago wants the obs stored as a dict
         _obs = {
-            "observation": np.expand_dims(obs, axis=(0, 1))
+            "observation": np.expand_dims(obs.astype(np.float32), axis=(0, 1))
         }
         _done = np.expand_dims(done, axis=(0, 1))
         _goal = np.expand_dims(np.array([0.], dtype=np.float32), axis=(0, 1, 2))

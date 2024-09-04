@@ -124,6 +124,7 @@ class TformerTrajEncoder(TrajEncoder):
         tstep_dim: int,
         max_seq_len: int,
         horizon: int,
+        device: torch.device,
         d_model: int = 256,
         n_heads: int = 8,
         d_ff: int = 1024,
@@ -153,7 +154,7 @@ class TformerTrajEncoder(TrajEncoder):
             attention=attention,
             norm=norm,
             pos_emb=pos_emb,
-        )
+        ).to(device)
         self.d_model = d_model
 
     def init_hidden_state(self, batch_size: int, device: torch.device):
