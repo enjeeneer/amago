@@ -13,12 +13,12 @@ import gin
 import gymnasium as gym
 from typing import Union
 
-from agents.amago.amago.loading import Batch, MAGIC_PAD_VAL
-from agents.amago.amago.nets.tstep_encoders import *
-from agents.amago.amago.nets.traj_encoders import *
-from agents.amago.amago.nets import actor_critic
-from agents.amago.amago import utils
-from agents.amago.amago.envs.env_utils import GPUSequenceBuffer
+from amago.loading import Batch, MAGIC_PAD_VAL
+from amago.nets.tstep_encoders import *
+from amago.nets.traj_encoders import *
+from amago.nets import actor_critic
+from amago import utils
+from amago.envs.env_utils import GPUSequenceBuffer
 from agents.base import AmagoBatch
 
 

@@ -1,0 +1,4 @@
+discount: 0.99
+eval_frequency: 20000  # how often to evaluate the agent in learning steps
+eval_rollouts: 10  # how many rollouts to average over when evaluating
+learning_steps: 1000000
