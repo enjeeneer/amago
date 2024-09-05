@@ -57,7 +57,7 @@ class Agent(nn.Module):
         num_critics: int = 4,
         num_critics_td: int = 2,
         online_coeff: float = 1.0,
-        offline_coeff: float = 0.1,
+        offline_coeff: float = 0,  # we don't want to BC the training set
         gamma: float = 0.999,
         reward_multiplier: float = 10.0,
         tau: float = 0.003,
