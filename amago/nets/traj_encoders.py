@@ -135,7 +135,7 @@ class TformerTrajEncoder(TrajEncoder):
         dropout_qkv: float = 0.00,
         activation: str = "leaky_relu",
         norm: str = "layer",
-        attention: str = "vanilla",
+        attention: str = "flash",
         pos_emb: str = "learnable",
     ):
         super().__init__(tstep_dim, max_seq_len, horizon)
