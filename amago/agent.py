@@ -45,7 +45,7 @@ class Agent(nn.Module):
         rl2_space: gym.spaces.Box,
         max_seq_len: int,
         horizon: int,
-        device: torch.device,
+        device: torch.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")),
         batch_size: int = 24,
         learning_rate: float = 1e-4,
         l2_coeff: float = 1e-3,
@@ -610,13 +610,13 @@ class Agent(nn.Module):
         # the expand dims shaping below is to align with the
         # (num_workers, 1, ...) shape of the sequence buffers
 
-        # for some reason Amago wants the obs stored as a dict
+        # for some reason wants the obs stored as a dict
         _obs = {
             "observation": np.expand_dims(obs.astype(np.float32), axis=(0, 1))
         }
         _done = np.expand_dims(done, axis=(0, 1))
         _goal = np.expand_dims(np.array([0.], dtype=np.float32), axis=(0, 1, 2))
-        _time = np.expand_dims(np.array([time_step], dtype=np.float32), axis=(0, 1))
+        _time = np.expand_dims(np.array([time_step / 1000], dtype=np.float32), axis=(0, 1))
 
         # first timestep requires some dummy variables
         if time_step == 0:
