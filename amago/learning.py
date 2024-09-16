@@ -326,6 +326,7 @@ class Experiment:
             "action_space": self.train_envs.single_action_space,
             "max_seq_len": self.max_seq_len,
             "horizon": self.horizon,
+            "device": self.DEVICE,
         }
         policy = self.agent_type(**policy_kwargs)
         assert isinstance(policy, Agent)
