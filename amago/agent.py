@@ -12,7 +12,7 @@ import numpy as np
 import wandb
 import gin
 import gymnasium as gym
-from typing import Union
+from typing import Union, Literal
 
 from amago.loading import Batch, MAGIC_PAD_VAL
 from amago.nets.tstep_encoders import *
@@ -47,6 +47,7 @@ class Agent(nn.Module):
         horizon: int,
         # device: torch.device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")),
         device: torch.device,
+        attention: Literal["vanilla", "flash"],
         batch_size: int = 24,
         learning_rate: float = 1e-4,
         l2_coeff: float = 1e-3,
@@ -116,6 +117,7 @@ class Agent(nn.Module):
             max_seq_len=max_seq_len,
             horizon=horizon,
             device=device,
+            attention=attention
         )
         self.emb_dim = self.traj_encoder.emb_dim
 

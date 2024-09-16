@@ -125,6 +125,7 @@ class TformerTrajEncoder(TrajEncoder):
         max_seq_len: int,
         horizon: int,
         device: torch.device,
+        attention: str,
         d_model: int = 256,
         n_heads: int = 8,
         d_ff: int = 1024,
@@ -135,7 +136,6 @@ class TformerTrajEncoder(TrajEncoder):
         dropout_qkv: float = 0.00,
         activation: str = "leaky_relu",
         norm: str = "layer",
-        attention: str = "flash",
         pos_emb: str = "learnable",
     ):
         super().__init__(tstep_dim, max_seq_len, horizon)
