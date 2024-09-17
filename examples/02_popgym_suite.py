@@ -2,7 +2,6 @@ from argparse import ArgumentParser
 
 import wandb
 
-import amago
 from amago.envs.builtin.popgym_envs import POPGymAMAGO, MultiDomainPOPGymAMAGO
 from amago.cli_utils import *
 
